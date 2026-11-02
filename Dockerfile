@@ -22,7 +22,6 @@ USER user
 
 ENV HOME=/home/user \
     PORT=7860 \
-    ADMIN_PORT=7860 \
     ADMIN_HOST=0.0.0.0 \
     DB_TYPE=sqlite \
     REDIS_ENABLED=0

@@ -43,22 +43,34 @@ def constraint_exists(inspector, table_name, constraint_name):
 def clean_datetime_data():
     """Clean up incorrect date data before conversion"""
     connection = op.get_bind()
+    insp = inspect(connection)
+    tables = insp.get_table_names()
+    dialect = connection.dialect.name
 
-    connection.execute(text("""
-                            UPDATE bought_goods
-                            SET bought_datetime = '2024-01-01 00:00:00'
-                            WHERE bought_datetime::text = '' 
-           OR bought_datetime IS NULL 
-           OR LENGTH(TRIM(bought_datetime::text)) = 0
-                            """))
+    if dialect == "postgresql":
+        cast_bought = "bought_datetime::text"
+        cast_op = "operation_time::text"
+    else:
+        cast_bought = "CAST(bought_datetime AS TEXT)"
+        cast_op = "CAST(operation_time AS TEXT)"
 
-    connection.execute(text("""
-                            UPDATE operations
-                            SET operation_time = '2024-01-01 00:00:00'
-                            WHERE operation_time::text = '' 
-           OR operation_time IS NULL 
-           OR LENGTH(TRIM(operation_time::text)) = 0
-                            """))
+    if "bought_goods" in tables:
+        connection.execute(text(f"""
+            UPDATE bought_goods
+            SET bought_datetime = '2024-01-01 00:00:00'
+            WHERE {cast_bought} = '' 
+               OR bought_datetime IS NULL 
+               OR LENGTH(TRIM({cast_bought})) = 0
+        """))
+
+    if "operations" in tables:
+        connection.execute(text(f"""
+            UPDATE operations
+            SET operation_time = '2024-01-01 00:00:00'
+            WHERE {cast_op} = '' 
+               OR operation_time IS NULL 
+               OR LENGTH(TRIM({cast_op})) = 0
+        """))
 
 
 def _column_exists(conn, table_name: str, column_name: str) -> bool:

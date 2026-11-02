@@ -95,7 +95,7 @@ class EnvKeys(ABC):
 
     # Web admin panel
     ADMIN_HOST: Final = _get_optional("ADMIN_HOST", _get_optional("MONITORING_HOST", "0.0.0.0" if os.getenv("RENDER") else "localhost"))
-    ADMIN_PORT: Final = int(_get_optional("ADMIN_PORT", _get_optional("MONITORING_PORT", os.getenv("PORT", "9090"))))
+    ADMIN_PORT: Final = int(os.getenv("PORT") or _get_optional("ADMIN_PORT", _get_optional("MONITORING_PORT", "9090")))
     ADMIN_USERNAME: Final = _get_optional("ADMIN_USERNAME", "admin")
     ADMIN_PASSWORD: Final = _get_optional("ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD)
     SECRET_KEY: Final = _get_optional("SECRET_KEY", _DEFAULT_SECRET_KEY)
