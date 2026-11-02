@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from abc import ABC
 from pathlib import Path
 from typing import Final
@@ -97,8 +98,10 @@ class EnvKeys(ABC):
     ADMIN_HOST: Final = _get_optional("ADMIN_HOST", _get_optional("MONITORING_HOST", "0.0.0.0" if os.getenv("RENDER") else "localhost"))
     ADMIN_PORT: Final = int(os.getenv("PORT") or _get_optional("ADMIN_PORT", _get_optional("MONITORING_PORT", "9090")))
     ADMIN_USERNAME: Final = _get_optional("ADMIN_USERNAME", "admin")
-    ADMIN_PASSWORD: Final = _get_optional("ADMIN_PASSWORD", _DEFAULT_ADMIN_PASSWORD)
-    SECRET_KEY: Final = _get_optional("SECRET_KEY", _DEFAULT_SECRET_KEY)
+    ADMIN_PASSWORD: Final = _get_optional("ADMIN_PASSWORD", "") or (
+        secrets.token_urlsafe(12) if os.getenv("RENDER") else _DEFAULT_ADMIN_PASSWORD
+    )
+    SECRET_KEY: Final = _get_optional("SECRET_KEY", "") or secrets.token_hex(32)
     ADMIN_COOKIE_SECURE: Final = _get_optional("ADMIN_COOKIE_SECURE", "auto")
 
     # Webhook
