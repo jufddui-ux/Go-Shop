@@ -155,6 +155,23 @@ async def _startup(dp: Dispatcher, bot: Bot, ctx: AppContext, storage) -> None:
 
     ctx.admin_server, ctx.admin_server_task = await _start_admin_server(bot)
 
+    # Register Telegram native Menu Button and default commands
+    try:
+        from aiogram.types import BotCommand, BotCommandScopeDefault, MenuButtonCommands
+        await bot.set_my_commands(
+            commands=[
+                BotCommand(command="start", description="📋 Main Menu"),
+                BotCommand(command="shop", description="🛍 Browse Shop"),
+                BotCommand(command="profile", description="👤 Profile & Balance"),
+                BotCommand(command="cart", description="🛒 Shopping Cart"),
+            ],
+            scope=BotCommandScopeDefault()
+        )
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        logging.info("Telegram native Menu button and bot commands registered successfully")
+    except Exception as e:
+        logging.warning("Could not set chat menu button: %s", e)
+
     logging.info(f"Recovery and admin panel initialized on {EnvKeys.ADMIN_HOST}:{EnvKeys.ADMIN_PORT}")
 
 

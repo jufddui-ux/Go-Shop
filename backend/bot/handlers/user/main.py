@@ -88,12 +88,13 @@ async def _is_subscribed(bot, channel_username: str, user_id: int) -> bool | Non
     return await check_sub_channel(chat_member)
 
 
-@router.message(F.text.startswith('/start'))
+@router.message(F.text.startswith('/start') | F.text.in_({'/menu', '📋 Menu', 'Menu', 'menu'}))
 async def start(message: Message, state: FSMContext):
     """
-    Handle /start:
+    Handle /start and /menu:
     - Ensure user exists (register if new)
     - (Optional) Check channel subscription
+    - Set Telegram native Menu button in chat
     - Show the main menu
     """
     if message.chat.type != ChatType.PRIVATE:
@@ -101,6 +102,12 @@ async def start(message: Message, state: FSMContext):
 
     user_id = message.from_user.id
     await state.clear()
+
+    try:
+        from aiogram.types import MenuButtonCommands
+        await message.bot.set_chat_menu_button(chat_id=message.chat.id, menu_button=MenuButtonCommands())
+    except Exception:
+        pass
 
     role_data = await check_role_cached(user_id)
     owner_max_role = await select_max_role_id()
