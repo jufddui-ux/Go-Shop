@@ -175,7 +175,17 @@ async def back_to_menu_callback_handler(call: CallbackQuery, state: FSMContext):
     channel_username = _parse_channel_username()
 
     markup = main_menu(role=role, channel=channel_username, helper=EnvKeys.HELPER_ID, referral_percent=EnvKeys.REFERRAL_PERCENT)
-    await call.message.edit_text(localize("menu.title"), reply_markup=markup)
+    if call.message.photo:
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+        await call.message.answer(localize("menu.title"), reply_markup=markup)
+    else:
+        try:
+            await call.message.edit_text(localize("menu.title"), reply_markup=markup)
+        except TelegramBadRequest:
+            await call.message.answer(localize("menu.title"), reply_markup=markup)
     await state.clear()
 
 

@@ -64,23 +64,34 @@ class BroadcastManager:
             user_id: int,
             text: str,
             reply_markup: Optional[InlineKeyboardMarkup] = None,
-            parse_mode: str = "HTML"
+            parse_mode: str = "HTML",
+            photo: Optional[str] = None
     ) -> str:
         """
-        Securely sending a message with error handling.
+        Securely sending a message (or photo with caption) with error handling.
 
         Returns one of: "sent", "blocked" (user blocked the bot), or "failed"
         (bad request / retries exhausted / unknown).
         """
         for attempt in range(self.retry_count):
             try:
-                await self.bot.send_message(
-                    chat_id=user_id,
-                    text=text,
-                    reply_markup=reply_markup,
-                    parse_mode=parse_mode,
-                    disable_notification=True  # Don't spam notifications
-                )
+                if photo:
+                    await self.bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo,
+                        caption=text if text else None,
+                        reply_markup=reply_markup,
+                        parse_mode=parse_mode,
+                        disable_notification=True
+                    )
+                else:
+                    await self.bot.send_message(
+                        chat_id=user_id,
+                        text=text,
+                        reply_markup=reply_markup,
+                        parse_mode=parse_mode,
+                        disable_notification=True  # Don't spam notifications
+                    )
                 return "sent"
 
             except TelegramRetryAfter as e:
@@ -119,17 +130,19 @@ class BroadcastManager:
             progress_callback: Optional[Union[
                 Callable[[BroadcastStats], None],
                 Callable[[BroadcastStats], Awaitable[None]]
-            ]] = None
+            ]] = None,
+            photo: Optional[str] = None
     ) -> BroadcastStats:
         """
         Perform broadcast to a list of users
 
         Args:
             user_ids: List of user IDs
-            text: Message text
+            text: Message text (or caption if photo is provided)
             reply_markup: Keyboard
             parse_mode: Parsing mode
             progress_callback: Callback for tracking progress (can be async or sync)
+            photo: Optional Telegram photo file_id to send as photo message
 
         Returns:
             Broadcast statistics
@@ -151,7 +164,7 @@ class BroadcastManager:
 
             # Create tasks for the batch
             tasks = [
-                self._send_message_safe(user_id, text, reply_markup, parse_mode)
+                self._send_message_safe(user_id, text, reply_markup, parse_mode, photo=photo)
                 for user_id in batch
             ]
 
