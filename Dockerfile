@@ -28,4 +28,4 @@ ENV HOME=/home/user \
 
 EXPOSE 7860
 
-CMD ["sh", "-c", "alembic upgrade head && python run.py"]
+CMD ["sh", "-c", "if [ \"$DB_TYPE\" = \"postgres\" ] || [ -n \"$DATABASE_URL\" ]; then alembic upgrade head; else alembic stamp head 2>/dev/null || true; fi && python run.py"]

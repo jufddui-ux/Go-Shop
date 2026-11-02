@@ -50,8 +50,12 @@ chown botuser:botgroup /app
 
 echo "Permissions configured. Running migrations..."
 
-# Run migrations separately — if they fail, set -e stops the container before bot starts
-gosu botuser alembic upgrade head
+# Run migrations if using PostgreSQL (SQLite schema is managed by SQLAlchemy create_all)
+if [ "$DB_TYPE" = "postgres" ] || [ -n "$DATABASE_URL" ]; then
+    gosu botuser alembic upgrade head
+else
+    gosu botuser alembic stamp head 2>/dev/null || true
+fi
 
 echo "Migrations complete. Starting bot..."
 
