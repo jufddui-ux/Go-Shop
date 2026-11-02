@@ -419,6 +419,7 @@ async def start_bot() -> None:
             if EnvKeys.WEBHOOK_ENABLED == "1" and EnvKeys.WEBHOOK_URL:
                 await _run_webhook(dp, bot, ctx)
             else:
+                await bot.delete_webhook(drop_pending_updates=True)
                 await dp.start_polling(
                     bot,
                     allowed_updates=_ALLOWED_UPDATES,
