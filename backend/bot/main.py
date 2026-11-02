@@ -401,6 +401,9 @@ async def start_bot() -> None:
         from aiogram.client.session.aiohttp import AiohttpSession
         session = AiohttpSession(proxy=EnvKeys.BOT_PROXY)
 
+    masked = f"{EnvKeys.TOKEN[:6]}...{EnvKeys.TOKEN[-4:]}" if len(EnvKeys.TOKEN) > 10 else "***"
+    logging.info(f"Connecting to Telegram with token {masked} (length: {len(EnvKeys.TOKEN)})...")
+
     async with Bot(
             token=EnvKeys.TOKEN,
             session=session,

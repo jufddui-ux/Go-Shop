@@ -28,13 +28,18 @@ class EnvKeys(ABC):
     def _get_required(*keys: str) -> str:
         for key in keys:
             val = os.getenv(key)
-            if val:
-                return val
+            if val is not None and val != "":
+                clean = val.strip().strip('"').strip("'").strip()
+                if clean:
+                    return clean
         raise ValueError(f"Missing required environment variable: {keys[0]}")
 
     @staticmethod
     def _get_optional(key: str, default: str = "") -> str:
-        return os.getenv(key, default)
+        val = os.getenv(key)
+        if val is not None:
+            return val.strip().strip('"').strip("'").strip()
+        return default
 
     # Telegram
     TOKEN: Final = _get_required('TOKEN', 'BOT_TOKEN')
