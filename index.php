@@ -52,6 +52,8 @@ $def = [
     'proof_link' => 'https://t.me/YourProofChannel',
     'howto_link' => 'https://t.me/YourHowToVideo',
     'support_user' => '@YourSupportUsername',
+    'referral_percent' => 10,
+    'referral_enabled' => true,
     'payment_methods' => [
         'binance' => [
             'name' => 'Binance (USDT / Crypto)',
@@ -340,10 +342,49 @@ function btn($rows) {
 }
 
 // ============================================================
+// FORMATTING & HELPERS
+// ============================================================
+function formatPrice($amount, $cur = '$') {
+    $val = (float)$amount;
+    if ($val >= 1) {
+        $formatted = (floor($val) == $val) ? number_format($val, 0) : rtrim(rtrim(number_format($val, 4, '.', ''), '0'), '.');
+    } else {
+        $formatted = rtrim(rtrim(sprintf('%.6f', $val), '0'), '.');
+        if ($formatted === '') $formatted = '0';
+    }
+    return $cur . $formatted;
+}
+
+function isConfiguredPM($pm) {
+    $addr = trim($pm['address'] ?? $pm['upi_id'] ?? '');
+    if (empty($addr)) return false;
+    $lower = strtolower($addr);
+    $demoPhrases = ['03xxxx', 'binance pay id', 'btc / ltc', 'set in admin', 'yourupi', 'contact admin', 'account name'];
+    foreach ($demoPhrases as $dp) {
+        if (strpos($lower, $dp) !== false) return false;
+    }
+    return true;
+}
+
+// ============================================================
 // ROUTING
 // ============================================================
 if ($is_cb) { answerCbFast($cb_id); routeCallback($chat_id, $mid, $uid, $fname, $data); }
-elseif ($text == "/start" || strpos($text, "/start") === 0) { showMainMenu($chat_id, 0, $uid, $fname); }
+elseif ($text == "/start" || strpos($text, "/start") === 0) {
+    if (strpos($text, "/start ref_") === 0) {
+        $ref_id = trim(substr($text, 11));
+        if (!empty($ref_id) && (string)$ref_id !== (string)$uid && isset($users[$ref_id])) {
+            if (empty($users[$uid]['referrer'])) {
+                $users[$uid]['referrer'] = $ref_id;
+                $users[$ref_id]['referral_count'] = ($users[$ref_id]['referral_count'] ?? 0) + 1;
+                saveJson("users", $users);
+                $rPercent = $settings['referral_percent'] ?? 10;
+                sendMsg($ref_id, "🎉 <b>New Referral Joined!</b>\n━━━━━━━━━━━\n\n👤 <b>{$fname}</b> joined using your referral link!\n💰 You will earn <b>{$rPercent}%</b> commission on their deposits.");
+            }
+        }
+    }
+    showMainMenu($chat_id, 0, $uid, $fname);
+}
 elseif ($text == "/admin" || strpos($text, "/admin") === 0) { if (!isAdmin($uid)) sendMsg($chat_id, "❌ Access denied"); else showAdmin($chat_id, 0); }
 elseif ($text == "/cancel") { clearState($uid); sendMsg($chat_id, "✅ Cancelled", btn([[["⬅️ Menu", "back", "danger"]]])); }
 elseif ($text != "") { handleTextState($chat_id, 0, $uid, $text); }
@@ -414,12 +455,35 @@ function routeCallback($c, $mid, $uid, $fname, $data) {
         return;
     }
     if ($data == "pm_menu") { showPMManager($c, $mid); return; }
-    if ($data == "addpm") { setState($uid, "addpm_name"); smartReply($c, $mid, "💳 <b>Send Payment Method Name</b>", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
+    if ($data == "addpm") { setState($uid, "addpm_name"); smartReply($c, $mid, "💳 <b>Send Payment Method Name</b>\n\n(e.g. Binance Pay, Easypaisa PKR, Bitcoin, Solana)", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
+    if (strpos($data, "editpm_") === 0) { showEditPM($c, $mid, substr($data, 7)); return; }
+    if (strpos($data, "setpmaddr_") === 0) {
+        $pid = substr($data, 10);
+        setState($uid, "edit_pm_address", ["pm_id" => $pid]);
+        smartReply($c, $mid, "✏️ <b>Send Real Account Number / Wallet Address / Pay ID:</b>\n\n(e.g. Binance Pay ID, Easypaisa Phone & Account Title, USDT Address)", btn([[["❌ Cancel", "editpm_$pid", "danger"]]]));
+        return;
+    }
+    if (strpos($data, "setpmdesc_") === 0) {
+        $pid = substr($data, 10);
+        setState($uid, "edit_pm_desc", ["pm_id" => $pid]);
+        smartReply($c, $mid, "📝 <b>Send Payment Instructions</b> for users:", btn([[["❌ Cancel", "editpm_$pid", "danger"]]]));
+        return;
+    }
+    if (strpos($data, "setpmqr_") === 0) {
+        $pid = substr($data, 8);
+        setState($uid, "edit_pm_qr", ["pm_id" => $pid]);
+        smartReply($c, $mid, "📸 <b>Send QR Photo</b> (or send /remove to delete current QR):", btn([[["❌ Cancel", "editpm_$pid", "danger"]]]));
+        return;
+    }
     if (strpos($data, "delpm_") === 0) {
         $pid = substr($data, 6);
         if (isset($settings['payment_methods'][$pid])) { $n = $settings['payment_methods'][$pid]['name']; unset($settings['payment_methods'][$pid]); saveJson("settings", $settings); smartReply($c, $mid, "✅ <b>Deleted:</b> $n", btn([[["⬅️ Back", "pm_menu", "danger"]]])); }
         return;
     }
+    if ($data == "referral") { showReferral($c, $mid, $uid); return; }
+    if ($data == "admin_ref") { showAdminReferral($c, $mid); return; }
+    if ($data == "set_ref_pct") { setState($uid, "set_ref_pct"); smartReply($c, $mid, "✏️ <b>Send Referral Commission %</b>\n\n(e.g. 5, 10, 15, 20)", btn([[["❌ Cancel", "admin_ref", "danger"]]])); return; }
+    if ($data == "toggle_ref") { $settings['referral_enabled'] = !($settings['referral_enabled'] ?? true); saveJson("settings", $settings); showAdminReferral($c, $mid); return; }
     if ($data == "approvals") { showApprovals($c, $mid); return; }
     if (strpos($data, "approve_") === 0) { approvePayment($c, $mid, substr($data, 8)); return; }
     if (strpos($data, "reject_") === 0) { rejectPayment($c, $mid, substr($data, 7)); return; }
@@ -586,16 +650,74 @@ function handleTextState($c, $mid, $uid, $text) {
             sendMsg($c, "✅ <b>Category added:</b>\n\n" . trim($text), btn([[["⬅️ Admin", "backadmin", "danger"]]]));
             return;
         }
-        if ($state == "addprod_name") { setState($uid, "addprod_price", ["cat" => getExtra($uid, 'cat'), "name" => trim($text)]); sendMsg($c, "💰 <b>Send Price</b>", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
-        if ($state == "addprod_price") { $p = (int)$text; if ($p < 1) { sendMsg($c, "❌ Invalid"); return; } setState($uid, "addprod_desc", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => $p]); sendMsg($c, "📝 <b>Send Description</b>", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
-        if ($state == "addprod_desc") { setState($uid, "addprod_delivery", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => getExtra($uid, 'price'), "desc" => trim($text)]); sendMsg($c, "🎁 <b>Send Delivery Content</b>\n\n• Text / Link\n• Photo / Video / Document / Voice", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
-        if ($state == "addprod_delivery") { setState($uid, "addprod_stock", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => getExtra($uid, 'price'), "desc" => getExtra($uid, 'desc'), "del_type" => "text", "del_content" => trim($text)]); sendMsg($c, "📊 <b>Send Stock</b>\n\nNumber or <code>unlimited</code>", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
+        if ($state == "addprod_name") {
+            setState($uid, "addprod_price", ["cat" => getExtra($uid, 'cat'), "name" => trim($text)]);
+            $cur = $settings['currency'];
+            sendMsg($c, "💰 <b>Send Price in USD ({$cur})</b>\n\nAllowed range: <b>{$cur}0.0001 to {$cur}10,000,000</b>\nExample: <code>0.0001</code>, <code>0.05</code>, <code>2.50</code>, <code>100</code>", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "addprod_price") {
+            $p = (float)trim($text);
+            $cur = $settings['currency'];
+            if ($p < 0.0001 || $p > 10000000) {
+                sendMsg($c, "❌ <b>Invalid Price!</b>\n\nMust be between <b>{$cur}0.0001</b> and <b>{$cur}10,000,000</b>.\nExample: <code>0.0001</code>, <code>0.50</code>, <code>15</code>", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+                return;
+            }
+            setState($uid, "addprod_desc", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => $p]);
+            sendMsg($c, "📝 <b>Send Product Description</b>", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "addprod_desc") {
+            setState($uid, "addprod_image", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => getExtra($uid, 'price'), "desc" => trim($text)]);
+            sendMsg($c, "📸 <b>Send Product Photo / Image</b>\n\nUpload a photo for this product, or send <code>/skip</code> if you do not want an image.", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "addprod_image") {
+            if (strtolower(trim($text)) === "/skip") {
+                setState($uid, "addprod_delivery", [
+                    "cat" => getExtra($uid, 'cat'),
+                    "name" => getExtra($uid, 'name'),
+                    "price" => getExtra($uid, 'price'),
+                    "desc" => getExtra($uid, 'desc'),
+                    "image_id" => ""
+                ]);
+                sendMsg($c, "🎁 <b>Send Delivery Content</b>\n\n• Text / Link / Key / Account credentials\n• Or Photo / Video / Document", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            } else {
+                sendMsg($c, "⚠️ Please send a <b>Photo</b> for this product, or send <code>/skip</code> to continue without an image.");
+            }
+            return;
+        }
+        if ($state == "addprod_delivery") {
+            setState($uid, "addprod_stock", [
+                "cat" => getExtra($uid, 'cat'),
+                "name" => getExtra($uid, 'name'),
+                "price" => getExtra($uid, 'price'),
+                "desc" => getExtra($uid, 'desc'),
+                "image_id" => getExtra($uid, 'image_id'),
+                "del_type" => "text",
+                "del_content" => trim($text)
+            ]);
+            sendMsg($c, "📊 <b>Send Stock</b>\n\nNumber or <code>unlimited</code>", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
         if ($state == "addprod_stock") {
             $stock = (strtolower(trim($text)) == "unlimited") ? -1 : max(0, (int)$text);
             $pid = "p" . substr(time(), -6) . rand(10, 99);
-            $products[$pid] = ["name" => getExtra($uid, 'name'), "cat" => getExtra($uid, 'cat'), "price" => getExtra($uid, 'price'), "description" => getExtra($uid, 'desc'), "delivery_type" => getExtra($uid, 'del_type'), "delivery_content" => getExtra($uid, 'del_content'), "stock" => $stock];
-            saveJson("products", $products); $nm = getExtra($uid, 'name'); clearState($uid);
-            sendMsg($c, "✅ <b>Product Added!</b>\n\n📦 $nm", btn([[["⬅️ Admin", "backadmin", "danger"]]]));
+            $cur = $settings['currency'];
+            $products[$pid] = [
+                "name" => getExtra($uid, 'name'),
+                "cat" => getExtra($uid, 'cat'),
+                "price" => (float)getExtra($uid, 'price'),
+                "description" => getExtra($uid, 'desc'),
+                "image_id" => getExtra($uid, 'image_id') ?: "",
+                "delivery_type" => getExtra($uid, 'del_type'),
+                "delivery_content" => getExtra($uid, 'del_content'),
+                "stock" => $stock
+            ];
+            saveJson("products", $products);
+            $nm = getExtra($uid, 'name');
+            clearState($uid);
+            sendMsg($c, "✅ <b>Product Added!</b>\n\n📦 <b>$nm</b>\n💰 Price: " . formatPrice($products[$pid]['price'], $cur), btn([[["⬅️ Admin Panel", "backadmin", "danger"]]]));
             return;
         }
         if ($state == "addpm_name") {
@@ -694,6 +816,48 @@ function handleTextState($c, $mid, $uid, $text) {
             sendMsg($tid, "👑 <b>You are now an admin!</b>\n\nUse /admin to access panel.");
             return;
         }
+        if ($state == "edit_pm_address") {
+            $pid = getExtra($uid, 'pm_id');
+            if (isset($settings['payment_methods'][$pid])) {
+                $settings['payment_methods'][$pid]['address'] = trim($text);
+                $settings['payment_methods'][$pid]['upi_id'] = trim($text);
+                saveJson("settings", $settings);
+                clearState($uid);
+                sendMsg($c, "✅ <b>Real Address / Account Saved!</b>\n\nThis method is now active and visible to users.", btn([[["⚙️ Manage Method", "editpm_$pid", "primary"], ["⬅️ Payment Methods", "pm_menu", "danger"]]]));
+            }
+            return;
+        }
+        if ($state == "edit_pm_desc") {
+            $pid = getExtra($uid, 'pm_id');
+            if (isset($settings['payment_methods'][$pid])) {
+                $settings['payment_methods'][$pid]['description'] = trim($text);
+                saveJson("settings", $settings);
+                clearState($uid);
+                sendMsg($c, "✅ <b>Instructions Updated!</b>", btn([[["⚙️ Manage Method", "editpm_$pid", "primary"]]]));
+            }
+            return;
+        }
+        if ($state == "edit_pm_qr") {
+            $pid = getExtra($uid, 'pm_id');
+            if (strtolower(trim($text)) === "/remove") {
+                $settings['payment_methods'][$pid]['qr_url'] = "";
+                saveJson("settings", $settings);
+                clearState($uid);
+                sendMsg($c, "✅ <b>QR Code Removed!</b>", btn([[["⚙️ Manage Method", "editpm_$pid", "primary"]]]));
+            } else {
+                sendMsg($c, "⚠️ Please upload a <b>Photo</b> for the QR, or send <code>/remove</code>.");
+            }
+            return;
+        }
+        if ($state == "set_ref_pct") {
+            $pct = (float)trim($text);
+            if ($pct < 0 || $pct > 100) { sendMsg($c, "❌ Please enter a valid percentage (0 - 100)"); return; }
+            $settings['referral_percent'] = $pct;
+            saveJson("settings", $settings);
+            clearState($uid);
+            sendMsg($c, "✅ <b>Referral Commission Set to {$pct}%!</b>", btn([[["👥 Referral Settings", "admin_ref", "primary"]]]));
+            return;
+        }
         if ($state == "set_log_channel") {
             $v = trim($text);
             if ($v == "/skip" || $v == "0") { $settings['log_channel'] = ""; saveJson("settings", $settings); clearState($uid); sendMsg($c, "✅ <b>Log channel disabled</b>", btn([[["⬅️ Admin", "backadmin", "danger"]]])); return; }
@@ -766,6 +930,18 @@ function handleMediaState($c, $mid, $uid, $msg) {
     if (!$state) return;
 
     if (isAdmin($uid)) {
+        if ($state == "addprod_image" && isset($msg['photo'])) {
+            $photo_id = $msg['photo'][count($msg['photo']) - 1]['file_id'];
+            setState($uid, "addprod_delivery", [
+                "cat" => getExtra($uid, 'cat'),
+                "name" => getExtra($uid, 'name'),
+                "price" => getExtra($uid, 'price'),
+                "desc" => getExtra($uid, 'desc'),
+                "image_id" => $photo_id
+            ]);
+            sendMsg($c, "✅ <b>Product Photo Saved!</b>\n\n🎁 <b>Now Send Delivery Content:</b>\n\n• Text / Link / Key / Account credentials\n• Or Photo / Video / Document", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
         if ($state == "addprod_delivery") {
             $type = null; $content = null;
             if (isset($msg['photo'])) { $type = "photo"; $content = $msg['photo'][count($msg['photo']) - 1]['file_id']; }
@@ -773,8 +949,16 @@ function handleMediaState($c, $mid, $uid, $msg) {
             elseif (isset($msg['document'])) { $type = "document"; $content = $msg['document']['file_id']; }
             elseif (isset($msg['voice'])) { $type = "voice"; $content = $msg['voice']['file_id']; }
             if (!$type) { sendMsg($c, "❌ Unsupported"); return; }
-            setState($uid, "addprod_stock", ["cat" => getExtra($uid, 'cat'), "name" => getExtra($uid, 'name'), "price" => getExtra($uid, 'price'), "desc" => getExtra($uid, 'desc'), "del_type" => $type, "del_content" => $content]);
-            sendMsg($c, "✅ <b>Saved ($type)</b>\n\n📊 Send stock", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            setState($uid, "addprod_stock", [
+                "cat" => getExtra($uid, 'cat'),
+                "name" => getExtra($uid, 'name'),
+                "price" => getExtra($uid, 'price'),
+                "desc" => getExtra($uid, 'desc'),
+                "image_id" => getExtra($uid, 'image_id'),
+                "del_type" => $type,
+                "del_content" => $content
+            ]);
+            sendMsg($c, "✅ <b>Saved ($type)</b>\n\n📊 Send stock (e.g. 5, 10 or <code>unlimited</code>)", btn([[["❌ Cancel", "backadmin", "danger"]]]));
             return;
         }
         if ($state == "addpm_qr" && isset($msg['photo'])) {
@@ -782,6 +966,13 @@ function handleMediaState($c, $mid, $uid, $msg) {
             $settings['payment_methods'][$pmid]['qr_url'] = $msg['photo'][count($msg['photo']) - 1]['file_id']; saveJson("settings", $settings);
             setState($uid, "addpm_address", ["pm_id" => $pmid]);
             sendMsg($c, "✅ <b>QR Photo Saved!</b>\n\n💳 <b>Now send Account Details / Wallet Address / Pay ID:</b>\n\n(e.g. Binance Pay ID, Easypaisa Phone & Title, USDT Address)", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "edit_pm_qr" && isset($msg['photo'])) {
+            $pmid = getExtra($uid, 'pm_id');
+            $settings['payment_methods'][$pmid]['qr_url'] = $msg['photo'][count($msg['photo']) - 1]['file_id']; saveJson("settings", $settings);
+            clearState($uid);
+            sendMsg($c, "✅ <b>QR Photo Updated Successfully!</b>", btn([[["⚙️ Manage Method", "editpm_$pmid", "primary"]]]));
             return;
         }
         if ($state == "pm_message") {
@@ -836,9 +1027,12 @@ function showMainMenu($c, $mid, $uid, $name) {
     if (btnOn('proof')) $row3[] = ["📄 Payment Proof", "proof", "primary"];
     if ($row3) $rows[] = $row3;
     $row4 = [];
-    if (btnOn('howto')) $row4[] = ["📖 How To Use", "howto", "primary"];
+    $row4[] = ["👥 Refer & Earn", "referral", "primary"];
     if (btnOn('support')) $row4[] = ["💬 Support", "support", "primary"];
     if ($row4) $rows[] = $row4;
+    $row5 = [];
+    if (btnOn('howto')) $row5[] = ["📖 How To Use", "howto", "primary"];
+    if ($row5) $rows[] = $row5;
 
     foreach ($settings['custom_buttons'] as $cb) {
         if (!empty($cb['enabled'])) $rows[] = [[$cb['label'], $cb['url'], 'primary']];
@@ -862,22 +1056,41 @@ function showProducts($c, $mid, $cid) {
     $list = []; foreach ($products as $id => $p) if (($p['cat'] ?? '') == $cid) $list[$id] = $p;
     if (count($list) == 0) { smartReply($c, $mid, "🛒 <b>$cn</b>\n━━━━━━━━━━━\n\n❌ No products available.", btn([[["⬅️ Back", "backshop", "danger"]]])); return; }
     $msg = "🛒 <b>$cn</b>\n━━━━━━━━━━━\n\n📦 Select a product to view details:";
-    $kb = []; foreach ($list as $id => $p) $kb[] = [["{$p['name']} • {$cur}{$p['price']}", "buy_$id", "primary"]];
+    $kb = []; foreach ($list as $id => $p) $kb[] = [["{$p['name']} • " . formatPrice($p['price'], $cur), "buy_$id", "primary"]];
     $kb[] = [["⬅️ Back", "backshop", "danger"]];
     smartReply($c, $mid, $msg, btn($kb));
 }
 
 function showProductDetail($c, $mid, $uid, $pid) {
     global $products, $balances, $settings;
-    if (!isset($products[$pid])) { smartReply($c, $mid, "❌ Not found", btn([[["⬅️ Back", "backshop", "danger"]]])); return; }
-    $p = $products[$pid]; $cur = $settings['currency']; $bal = $balances[$uid] ?? 0;
+    if (!isset($products[$pid])) { smartReply($c, $mid, "❌ Product not found", btn([[["⬅️ Back", "backshop", "danger"]]])); return; }
+    $p = $products[$pid];
+    $cur = $settings['currency'];
+    $bal = (float)($balances[$uid] ?? 0);
+    $price = (float)$p['price'];
     $stock = $p['stock'] ?? -1;
     $st = ($stock == -1) ? "♾ Unlimited" : ($stock > 0 ? "✅ $stock left" : "❌ Out of Stock");
-    $msg = "🛍 <b>{$p['name']}</b>\n━━━━━━━━━━━\n\n📝 <b>Description:</b>\n{$p['description']}\n\n━━━━━━━━━━━\n💵 <b>Price:</b> {$cur}{$p['price']}\n📊 <b>Stock:</b> $st\n👛 <b>Your Balance:</b> {$cur}{$bal}\n━━━━━━━━━━━\n⚡ <i>Instant delivery after purchase</i>";
+    $priceFmt = formatPrice($price, $cur);
+    $balFmt = formatPrice($bal, $cur);
+    
+    $msg = "🛍 <b>{$p['name']}</b>\n━━━━━━━━━━━\n\n📝 <b>Description:</b>\n{$p['description']}\n\n━━━━━━━━━━━\n💵 <b>Price:</b> {$priceFmt}\n📊 <b>Stock:</b> $st\n👛 <b>Your Balance:</b> {$balFmt}\n━━━━━━━━━━━\n⚡ <i>Instant delivery after purchase</i>";
     $kb = [];
-    if ($stock != 0) { if ($bal >= $p['price']) $kb[] = [["✅ Buy Now", "confirmbuy_$pid", "success"]]; else $kb[] = [["💰 Add Fund", "addbal", "success"]]; }
-    $kb[] = [["⬅️ Back", "backshop", "danger"]];
-    smartReply($c, $mid, $msg, btn($kb));
+    if ($stock != 0) {
+        if ($bal >= $price) {
+            $kb[] = [["✅ Buy Now ({$priceFmt})", "confirmbuy_$pid", "success"]];
+        } else {
+            $kb[] = [["💰 Add Fund", "addbal", "success"]];
+        }
+    }
+    $kb[] = [["⬅️ Back to Shop", "backshop", "danger"]];
+    
+    if (!empty($p['image_id'])) {
+        @tg("deleteMessage", ['chat_id' => $c, 'message_id' => $mid]);
+        $r = sendPhoto($c, $p['image_id'], $msg, btn($kb));
+        if (!$r || stripos($r, '"ok":true') === false) sendMsg($c, $msg, btn($kb));
+    } else {
+        smartReply($c, $mid, $msg, btn($kb));
+    }
 }
 
 function doPurchase($c, $mid, $uid, $pid) {
@@ -942,7 +1155,8 @@ function showSupport($c, $mid) { global $settings; $u = $settings['support_user'
 // ============================================================
 function showAddFund($c, $mid, $uid) {
     global $settings;
-    $methods = $settings['payment_methods'] ?? [];
+    $allMethods = $settings['payment_methods'] ?? [];
+    $methods = array_filter($allMethods, fn($pm) => isConfiguredPM($pm));
     $cur = $settings['currency'];
     $msg = "💰 <b>Add Balance (Deposit in {$cur})</b>\n━━━━━━━━━━━\n\nChoose your payment method below:";
     $kb = [];
@@ -954,7 +1168,7 @@ function showAddFund($c, $mid, $uid) {
         $kb[] = [["$icon {$pm['name']}", "pm_$id", "primary"]];
     }
     $kb[] = [["⬅️ Main Menu", "back", "danger"]];
-    if (count($methods) == 0) $msg = "💰 <b>Add Balance</b>\n━━━━━━━━━━━\n\n❌ No payment methods currently available. Please contact support.";
+    if (count($methods) == 0) $msg = "💰 <b>Add Balance</b>\n━━━━━━━━━━━\n\n⚠️ No active payment methods right now.\nPlease contact admin or support to add balance.";
     smartReply($c, $mid, $msg, btn($kb));
 }
 function selectManualPM($c, $mid, $pmid) {
@@ -1138,9 +1352,10 @@ function showAdmin($c, $mid = 0) {
         [["📁 Add Category", "addcat", "primary"], ["🗑 Del Category", "delcat", "danger"]],
         [["📦 Add Product", "addprod", "primary"], ["🗑 Del Product", "delprod", "danger"]],
         [["💳 Payment Methods", "pm_menu", "primary"], ["💰 Approvals (" . $pending . ")", "approvals", "success"]],
-        [["👥 User List", "userlist", "primary"], ["📊 Statistics", "stats", "primary"]],
-        [["🚫 Ban System", "banmenu", "danger"], ["📨 Send PM", "pmuser", "primary"]],
-        [["📢 Broadcast", "broadcast", "primary"], ["🔧 Maintenance", "maint", "primary"]],
+        [["👥 Referral System", "admin_ref", "primary"], ["📊 Statistics", "stats", "primary"]],
+        [["👥 User List", "userlist", "primary"], ["📨 Send PM", "pmuser", "primary"]],
+        [["🚫 Ban System", "banmenu", "danger"], ["📢 Broadcast", "broadcast", "primary"]],
+        [["🔧 Maintenance", "maint", "primary"]],
         [["⚙️ Settings", "settings", "primary"], ["🎨 Button Mgmt", "bmgmt", "primary"]],
         [["💰 Add User Balance", "userbal", "success"], ["📢 Log Channel", "setlogchannel", "primary"]]
     ];
@@ -1174,19 +1389,103 @@ function showProductDeleteList($c, $mid) {
     smartReply($c, $mid, "🗑 <b>Select product to delete:</b>", btn($kb));
 }
 
+// ============================================================
+// REFERRAL SYSTEM
+// ============================================================
+function showReferral($c, $mid, $uid) {
+    global $settings, $users, $botToken;
+    $cur = $settings['currency'];
+    $pct = $settings['referral_percent'] ?? 10;
+    $refCount = $users[$uid]['referral_count'] ?? 0;
+    $refEarned = $users[$uid]['referral_earnings'] ?? 0;
+
+    $botUser = $GLOBALS['botUsername'] ?? '';
+    if (empty($botUser)) {
+        $info = httpGet("https://api.telegram.org/bot{$botToken}/getMe");
+        $j = json_decode($info, true);
+        $botUser = $j['result']['username'] ?? 'bot';
+        $GLOBALS['botUsername'] = $botUser;
+    }
+
+    $refLink = "https://t.me/{$botUser}?start=ref_{$uid}";
+    $msg = "👥 <b>EARN WITH REFERRALS</b>\n━━━━━━━━━━━\n\n" .
+           "💰 Earn <b>{$pct}% commission</b> instantly on every deposit made by users who join through your link!\n\n" .
+           "🔗 <b>Your Personal Referral Link:</b>\n" .
+           "<code>{$refLink}</code>\n" .
+           "<i>(Tap to copy link)</i>\n\n" .
+           "━━━━━━━━━━━\n" .
+           "📊 <b>YOUR STATS:</b>\n" .
+           "👥 Invited Friends: <b>{$refCount}</b>\n" .
+           "💵 Total Commission Earned: <b>" . formatPrice($refEarned, $cur) . "</b>\n\n" .
+           "💡 Share your link on Telegram, WhatsApp, social media to earn passive income!";
+
+    $shareUrl = "https://t.me/share/url?url=" . urlencode($refLink) . "&text=" . urlencode("Join this store bot to get digital goods!");
+    $kb = btn([
+        [["🔗 Share Referral Link", $shareUrl, "primary"]],
+        [["⬅️ Main Menu", "back", "danger"]]
+    ]);
+    smartReply($c, $mid, $msg, $kb);
+}
+
+function showAdminReferral($c, $mid) {
+    global $settings;
+    $pct = $settings['referral_percent'] ?? 10;
+    $en = !empty($settings['referral_enabled']);
+    $msg = "👥 <b>REFERRAL SYSTEM SETTINGS</b>\n━━━━━━━━━━━\n\n" .
+           "📊 <b>Commission Rate:</b> {$pct}%\n" .
+           "⚡ <b>System Status:</b> " . ($en ? "🟢 ACTIVE" : "🔴 DISABLED") . "\n\n" .
+           "Users earn this percentage when their referred users add funds.";
+    $kb = btn([
+        [["✏️ Set Commission %", "set_ref_pct", "primary"]],
+        [["🔄 Toggle: " . ($en ? "Disable" : "Enable"), "toggle_ref", $en ? "danger" : "success"]],
+        [["⬅️ Admin Panel", "backadmin", "danger"]]
+    ]);
+    smartReply($c, $mid, $msg, $kb);
+}
+
+function showEditPM($c, $mid, $pid) {
+    global $settings;
+    if (!isset($settings['payment_methods'][$pid])) {
+        smartReply($c, $mid, "❌ Method not found", btn([[["⬅️ Back", "pm_menu", "danger"]]]));
+        return;
+    }
+    $pm = $settings['payment_methods'][$pid];
+    $addr = $pm['address'] ?? $pm['upi_id'] ?? 'Not set';
+    $isDemo = !isConfiguredPM($pm);
+    $st = $isDemo ? "⚠️ <b>INACTIVE (Demo Details - Hidden from users)</b>" : "🟢 <b>ACTIVE (Visible to users)</b>";
+
+    $msg = "⚙️ <b>MANAGE: {$pm['name']}</b>\n━━━━━━━━━━━\n\n" .
+           "Status: $st\n\n" .
+           "📍 <b>Account Number / Address / Pay ID:</b>\n<code>{$addr}</code>\n\n" .
+           "📝 <b>Instructions:</b>\n" . ($pm['description'] ?: 'None') . "\n\n" .
+           "📸 <b>QR Photo:</b> " . (!empty($pm['qr_url']) ? "✅ Set" : "❌ None") . "\n\n" .
+           "━━━━━━━━━━━\n" .
+           "💡 <i>Set your real address so users can see and deposit using this method!</i>";
+
+    $kb = btn([
+        [["✏️ Set Real Address / ID", "setpmaddr_$pid", "success"]],
+        [["📝 Edit Instructions", "setpmdesc_$pid", "primary"], ["📸 Set QR Photo", "setpmqr_$pid", "primary"]],
+        [["🗑 Delete Method", "delpm_$pid", "danger"]],
+        [["⬅️ Payment Methods", "pm_menu", "danger"]]
+    ]);
+    smartReply($c, $mid, $msg, $kb);
+}
+
 function showPMManager($c, $mid) {
     global $settings;
     $methods = $settings['payment_methods'] ?? [];
-    $msg = "💳 <b>PAYMENT METHODS MANAGER</b>\n━━━━━━━━━━━\n\nConfigure Binance, Easypaisa, Crypto, etc.:\n\n";
+    $msg = "💳 <b>PAYMENT METHODS MANAGER</b>\n━━━━━━━━━━━\n\n";
     $kb = [];
     if (empty($methods)) {
-        $msg .= "❌ <i>No payment methods added yet.</i>\n";
+        $msg .= "❌ <i>No payment methods created yet.</i>\n";
     } else {
         $i = 1;
         foreach ($methods as $id => $pm) {
             $addr = $pm['address'] ?? $pm['upi_id'] ?? 'Not configured';
-            $msg .= "$i. <b>{$pm['name']}</b>\n   📍 <code>{$addr}</code>\n\n";
-            $kb[] = [["🗑 Delete {$pm['name']}", "delpm_$id", "danger"]];
+            $isDemo = !isConfiguredPM($pm);
+            $badge = $isDemo ? "⚠️ DEMO (Hidden from users)" : "🟢 ACTIVE";
+            $msg .= "$i. <b>{$pm['name']}</b> ($badge)\n   📍 <code>{$addr}</code>\n\n";
+            $kb[] = [["⚙️ Manage: {$pm['name']}", "editpm_$id", "primary"], ["🗑 Del", "delpm_$id", "danger"]];
             $i++;
         }
     }
@@ -1215,8 +1514,25 @@ function approvePayment($c, $mid, $oid) {
     $p = $payments[$oid];
     $payments[$oid]['status'] = "approved"; saveJson("payments", $payments);
     $balances[$p['user']] = ($balances[$p['user']] ?? 0) + $p['amount']; saveJson("balances", $balances);
-    smartReply($c, $mid, "✅ <b>Approved!</b>\nUser: <code>{$p['user']}</code>\nAmount: {$cur}{$p['amount']}", btn([[["⬅️ Back", "backadmin", "danger"]]]));
-    sendMsg($p['user'], "✅ <b>PAYMENT APPROVED</b>\n━━━━━━━━━━━\n\n🎉 Great news! Your payment has been approved.\n\n💰 <b>Amount Credited:</b> {$cur}{$p['amount']}\n💵 <b>New Balance:</b> {$cur}{$balances[$p['user']]}\n\n━━━━━━━━━━━\n🛒 Start shopping now!", btn([[["🛒 Shop Now", "shop", "success"], ["⬅️ Menu", "back", "danger"]]]));
+    
+    // Referral Commission
+    $refUser = $users[$p['user']]['referrer'] ?? null;
+    $refNote = "";
+    if ($refUser && !empty($settings['referral_enabled'])) {
+        $pct = (float)($settings['referral_percent'] ?? 10);
+        $comm = round(($p['amount'] * $pct) / 100, 4);
+        if ($comm > 0) {
+            $balances[$refUser] = ($balances[$refUser] ?? 0) + $comm;
+            $users[$refUser]['referral_earnings'] = ($users[$refUser]['referral_earnings'] ?? 0) + $comm;
+            saveJson("balances", $balances);
+            saveJson("users", $users);
+            sendMsg($refUser, "🎉 <b>Referral Bonus Received!</b>\n━━━━━━━━━━━\n\n👤 Your referral made a deposit of " . formatPrice($p['amount'], $cur) . "\n💰 <b>+" . formatPrice($comm, $cur) . " ({$pct}%)</b> has been credited to your balance!");
+            $refNote = "\n🎁 Ref Bonus: +" . formatPrice($comm, $cur) . " to <code>$refUser</code>";
+        }
+    }
+
+    smartReply($c, $mid, "✅ <b>Deposit Approved!</b>\nUser: <code>{$p['user']}</code>\nAmount: " . formatPrice($p['amount'], $cur) . $refNote, btn([[["⬅️ Back", "backadmin", "danger"]]]));
+    sendMsg($p['user'], "✅ <b>DEPOSIT APPROVED</b>\n━━━━━━━━━━━\n\n🎉 Great news! Your deposit has been confirmed.\n\n💰 <b>Amount Credited:</b> " . formatPrice($p['amount'], $cur) . "\n💵 <b>New Balance:</b> " . formatPrice($balances[$p['user']], $cur) . "\n\n━━━━━━━━━━━\n🛒 Ready to shop? Explore our store now!", btn([[["🛒 Shop Now", "shop", "success"], ["⬅️ Menu", "back", "danger"]]]));
     if (!empty($settings['log_channel'])) {
         $utr = $p['utr'] ?? 'N/A';
         sendMsg($settings['log_channel'], "💎 <b>NEW DEPOSIT RECEIVED</b> 💎\n━━━━━━━━━━━\n\n🆔 <b>UTR:</b> <code>$utr</code>\n💵 <b>Amount:</b> {$cur}{$p['amount']}\n👤 <b>User ID:</b> <code>{$p['user']}</code>\n📅 <b>Date:</b> " . date("d M Y H:i") . " IST\n\n━━━━━━━━━━━\n✅ Manually Verified");
