@@ -1,34 +1,15 @@
 services:
   - type: web
-    name: telegram-shop
+    name: telegram-shop-bot
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
     healthCheckPath: /health
     envVars:
-      - key: TOKEN
-        sync: false
+      - key: BOT_TOKEN
+        value: "8787930939:AAGJM3aZSqISF-AxWfmw0TjzDpqoXYeDuh4"
       - key: OWNER_ID
-        sync: false
+        value: "8671458115"
       - key: ADMIN_ID
-        sync: false
-      - key: ADMIN_HOST
-        value: 0.0.0.0
-      - key: ADMIN_PASSWORD
-        generateValue: true
-      - key: SECRET_KEY
-        generateValue: true
-      - key: REDIS_ENABLED
-        value: "0"
-      - key: DB_TYPE
-        value: postgres
-      - key: DATABASE_URL
-        fromDatabase:
-          name: telegram-shop-db
-          property: connectionString
-
-databases:
-  - name: telegram-shop-db
-    plan: free
-    ipAllowList: []
+        value: "8671458115"

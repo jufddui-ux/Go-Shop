@@ -1,31 +1,14 @@
-FROM python:3.11-slim
+FROM php:8.2-cli-alpine
 
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create standard user with UID 1000 for Hugging Face Spaces compatibility
-RUN useradd -m -u 1000 user
+RUN apk add --no-cache curl
 
 WORKDIR /app
 
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . /app
 
-COPY backend/ .
+RUN mkdir -p /app/data && chmod -R 777 /app/data
 
-RUN mkdir -p /app/data /app/logs && chown -R user:user /app
+ENV PORT=10000
+EXPOSE 10000
 
-USER user
-
-ENV HOME=/home/user \
-    PORT=7860 \
-    ADMIN_HOST=0.0.0.0 \
-    DB_TYPE=sqlite \
-    REDIS_ENABLED=0
-
-EXPOSE 7860
-
-CMD ["sh", "-c", "if [ \"$DB_TYPE\" = \"postgres\" ] || [ -n \"$DATABASE_URL\" ]; then alembic upgrade head; else alembic stamp head 2>/dev/null || true; fi && python run.py"]
+CMD ["sh", "-c", "php -S 0.0.0.0:${PORT:-10000} bot.php"]
