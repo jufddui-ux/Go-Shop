@@ -8,7 +8,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
-        value: "8787930939:AAGJM3aZSqISF-AxWfmw0TjzDpqoXYeDuh4"
+        value: "8787930939:AAHs5yCJrplMDdEhfKxfJPiJQi58F-Luf2w"
       - key: OWNER_ID
         value: "8671458115"
       - key: ADMIN_ID

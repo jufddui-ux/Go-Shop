@@ -15,7 +15,7 @@ set_time_limit(120); ob_start();
 // ============================================================
 // CONFIG
 // ============================================================
-$botToken = "8787930939:AAGJM3aZSqISF-AxWfmw0TjzDpqoXYeDuh4";
+$botToken = "8787930939:AAHs5yCJrplMDdEhfKxfJPiJQi58F-Luf2w";
 $website  = "https://api.telegram.org/bot" . $botToken;
 $adminID  = "8671458115"; // REAL OWNER
 
