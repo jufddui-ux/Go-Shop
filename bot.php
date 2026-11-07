@@ -291,12 +291,6 @@ function getState($uid) { global $temp; return $temp[$uid]['waiting'] ?? ''; }
 function getExtra($uid, $k) { global $temp; return $temp[$uid][$k] ?? null; }
 
 
-function httpGet($url, $timeout = 25) {
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_SSL_VERIFYPEER => false, CURLOPT_SSL_VERIFYHOST => false, CURLOPT_FOLLOWLOCATION => true]);
-        $r = curl_exec($ch); curl_close($ch); return $r;
-    }
     $ctx = stream_context_create(['http' => ['timeout' => $timeout, 'ignore_errors' => true]]);
     return @file_get_contents($url, false, $ctx);
 }
