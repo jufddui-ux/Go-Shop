@@ -45,14 +45,33 @@ $used_utrs  = loadJson("used_utrs");
 $temp       = loadJson("temp");
 
 $def = [
-    'currency' => '₹', 'usdt_rate' => 95,
-    'auto_api_key' => 'YOUR_API_KEY',
-    'auto_api_url' => 'https://vcgatewaypro.com/fampay.php',
-    'auto_upi' => 'yourupi@upi', 'auto_name' => 'DigitalStore', 'use_auto' => true,
+    'currency' => '$', 'usdt_rate' => 1,
+    'auto_api_key' => '',
+    'auto_api_url' => '',
+    'auto_upi' => '', 'auto_name' => 'DigitalStore', 'use_auto' => false,
     'proof_link' => 'https://t.me/YourProofChannel',
     'howto_link' => 'https://t.me/YourHowToVideo',
     'support_user' => '@YourSupportUsername',
-    'payment_methods' => [],
+    'payment_methods' => [
+        'binance' => [
+            'name' => 'Binance (USDT / Crypto)',
+            'address' => 'Binance Pay ID / USDT TRC20 or BEP20 Address',
+            'qr_url' => '',
+            'description' => 'Pay via Binance Pay or USDT (TRC20/BEP20). Enter amount in USD ($) and send TxID/screenshot.'
+        ],
+        'easypaisa' => [
+            'name' => 'Easypaisa (PKR)',
+            'address' => '03XXXXXXXXX (Account Name)',
+            'qr_url' => '',
+            'description' => 'Send payment in PKR via Easypaisa. Enter equivalent amount in USD ($) and send TRX ID.'
+        ],
+        'crypto' => [
+            'name' => 'Other / Crypto',
+            'address' => 'BTC / LTC / SOL / TRX / Other Crypto Address',
+            'qr_url' => '',
+            'description' => 'Pay with any cryptocurrency. Send TxHash/screenshot after payment.'
+        ]
+    ],
     'log_channel' => '',
     'admins' => ['8671458115', '8942668565'],
     'banned' => [],
@@ -67,6 +86,16 @@ $def = [
 ];
 $changed = false;
 foreach ($def as $k => $v) { if (!array_key_exists($k, $settings)) { $settings[$k] = $v; $changed = true; } }
+// Force USD currency and disable auto UPI
+if (empty($settings['currency']) || $settings['currency'] === '₹') {
+    $settings['currency'] = '$';
+    $changed = true;
+}
+$settings['use_auto'] = false;
+if (empty($settings['payment_methods'])) {
+    $settings['payment_methods'] = $def['payment_methods'];
+    $changed = true;
+}
 if ($changed) saveJson("settings", $settings);
 
 // ============================================================
@@ -480,19 +509,14 @@ function showSettings($c, $mid) {
     $msg = "⚙️ <b>BOT SETTINGS</b>\n━━━━━━━━━━━\n\n" .
         "🌍 <b>Currency Symbol:</b> {$settings['currency']}\n" .
         "💵 <b>USDT Rate:</b> {$settings['currency']}{$settings['usdt_rate']}\n" .
-        "💳 <b>Auto UPI:</b> <code>{$settings['auto_upi']}</code>\n" .
-        "🔑 <b>API Key:</b> <code>" . substr($settings['auto_api_key'], 0, 15) . "...</code>\n" .
-        "⚡ <b>Auto Payment:</b> " . ($settings['use_auto'] ? "✅ ON" : "❌ OFF") . "\n" .
-        "🎨 <b>Button Colors:</b> " . (!empty($settings['use_button_colors']) ? "✅ ON" : "❌ OFF") . "\n" .
-        "📄 <b>Proof:</b> <code>" . substr($settings['proof_link'], 0, 30) . "</code>\n" .
-        "📖 <b>HowTo:</b> <code>" . substr($settings['howto_link'], 0, 30) . "</code>\n" .
-        "💬 <b>Support:</b> {$settings['support_user']}";
+        "💳 <b>Payment Methods:</b> " . count($settings['payment_methods'] ?? []) . " configured\n" .
+        "📄 <b>Proof Channel:</b> <code>" . substr($settings['proof_link'], 0, 30) . "</code>\n" .
+        "📖 <b>HowTo Link:</b> <code>" . substr($settings['howto_link'], 0, 30) . "</code>\n" .
+        "💬 <b>Support User:</b> {$settings['support_user']}";
     $kb = btn([
         [["🌍 Currency Symbol", "sets_currency", "primary"], ["💵 USDT Rate", "sets_usdt", "primary"]],
-        [["💳 Auto UPI", "sets_autoupi", "primary"], ["🔑 API Key", "sets_autokey", "primary"]],
-        [["⚡ Toggle Auto", "toggleauto", "success"], ["🎨 Toggle Colors", "togglecolors", "primary"]],
+        [["💳 Payment Methods", "pm_menu", "primary"], ["💬 Support User", "sets_support", "primary"]],
         [["📄 Proof Link", "sets_proof", "primary"], ["📖 HowTo Link", "sets_howto", "primary"]],
-        [["💬 Support User", "sets_support", "primary"]],
         [["🔧 Maint. Message", "sets_maintmsg", "primary"]],
         [["⬅️ Back", "backadmin", "danger"]]
     ]);
@@ -574,10 +598,39 @@ function handleTextState($c, $mid, $uid, $text) {
             sendMsg($c, "✅ <b>Product Added!</b>\n\n📦 $nm", btn([[["⬅️ Admin", "backadmin", "danger"]]]));
             return;
         }
-        if ($state == "addpm_name") { $pmid = "pm" . substr(time(), -6) . rand(10, 99); $settings['payment_methods'][$pmid] = ["name" => trim($text), "qr_url" => "", "upi_id" => "", "description" => ""]; saveJson("settings", $settings); setState($uid, "addpm_qr", ["pm_id" => $pmid]); sendMsg($c, "📸 <b>Send QR Photo</b>\n\nOr /skip", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
-        if ($state == "addpm_qr") { if (strtolower(trim($text)) == "/skip") { setState($uid, "addpm_upi", ["pm_id" => getExtra($uid, 'pm_id')]); sendMsg($c, "💳 <b>Send UPI ID</b>", btn([[["❌ Cancel", "backadmin", "danger"]]])); } else sendMsg($c, "⚠️ Send a photo or /skip"); return; }
-        if ($state == "addpm_upi") { $pmid = getExtra($uid, 'pm_id'); $settings['payment_methods'][$pmid]['upi_id'] = trim($text); saveJson("settings", $settings); setState($uid, "addpm_desc", ["pm_id" => $pmid]); sendMsg($c, "📝 <b>Send Description</b>", btn([[["❌ Cancel", "backadmin", "danger"]]])); return; }
-        if ($state == "addpm_desc") { $pmid = getExtra($uid, 'pm_id'); $settings['payment_methods'][$pmid]['description'] = trim($text); saveJson("settings", $settings); $n = $settings['payment_methods'][$pmid]['name']; clearState($uid); sendMsg($c, "✅ <b>Payment method added:</b>\n\n💳 $n", btn([[["⬅️ Admin", "backadmin", "danger"]]])); return; }
+        if ($state == "addpm_name") {
+            $pmid = "pm" . substr(time(), -6) . rand(10, 99);
+            $settings['payment_methods'][$pmid] = ["name" => trim($text), "qr_url" => "", "address" => "", "description" => ""];
+            saveJson("settings", $settings);
+            setState($uid, "addpm_qr", ["pm_id" => $pmid]);
+            sendMsg($c, "📸 <b>Send QR Photo (Optional)</b>\n\nOr send /skip if you don't have a QR image.", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "addpm_qr") {
+            if (strtolower(trim($text)) == "/skip") {
+                setState($uid, "addpm_address", ["pm_id" => getExtra($uid, 'pm_id')]);
+                sendMsg($c, "💳 <b>Send Account Details / Wallet Address / Pay ID:</b>\n\n(e.g. Binance Pay ID, Easypaisa Number & Title, USDT TRC20 Address)", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            } else sendMsg($c, "⚠️ Send a photo or /skip");
+            return;
+        }
+        if ($state == "addpm_address") {
+            $pmid = getExtra($uid, 'pm_id');
+            $settings['payment_methods'][$pmid]['address'] = trim($text);
+            $settings['payment_methods'][$pmid]['upi_id'] = trim($text);
+            saveJson("settings", $settings);
+            setState($uid, "addpm_desc", ["pm_id" => $pmid]);
+            sendMsg($c, "📝 <b>Send Payment Description / Instructions:</b>\n\n(e.g. 'Pay in USD, send screenshot and TxID after payment')", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            return;
+        }
+        if ($state == "addpm_desc") {
+            $pmid = getExtra($uid, 'pm_id');
+            $settings['payment_methods'][$pmid]['description'] = trim($text);
+            saveJson("settings", $settings);
+            $n = $settings['payment_methods'][$pmid]['name'];
+            clearState($uid);
+            sendMsg($c, "✅ <b>Payment Method Added Successfully!</b>\n\n💳 <b>$n</b>", btn([[["💳 Payment Methods", "pm_menu", "primary"], ["⬅️ Admin", "backadmin", "danger"]]]));
+            return;
+        }
 
         if ($state == "adduserbal_id") {
             $tid = trim($text);
@@ -671,18 +724,18 @@ function handleTextState($c, $mid, $uid, $text) {
     if ($state == "man_ss") { sendMsg($c, "📸 <b>Upload photo</b> as screenshot, or /cancel", btn([[["⬅️ Cancel", "addbal", "danger"]]])); return; }
 
     if ($state == "man_utr") {
-        $utr = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', trim($text)));
-        if (strlen($utr) < 6) {
-            sendMsg($c, "❌ <b>Invalid UTR</b>\n\nMin 6 characters. Try again.", btn([[["❌ Cancel", "addbal", "danger"]]]));
+        $utr = trim($text);
+        if (strlen($utr) < 3) {
+            sendMsg($c, "❌ <b>Invalid Transaction ID</b>\n\nPlease enter a valid ID/TxHash (min 3 chars).", btn([[["❌ Cancel", "addbal", "danger"]]]));
             return;
         }
         $photo_id = getExtra($uid, 'photo');
-        $amount   = getExtra($uid, 'amount');
+        $amount   = (float)getExtra($uid, 'amount');
         $pmid     = getExtra($uid, 'pm_id');
-        if (!$photo_id || !$amount || !$pmid) { sendMsg($c, "❌ Session expired", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
+        if (!$photo_id || !$amount || !$pmid) { sendMsg($c, "❌ Session expired.", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
 
         $pm_name = $settings['payment_methods'][$pmid]['name'] ?? "Unknown";
-        $oid = "MAN" . substr(time(), -8) . rand(100, 999);
+        $oid = "DEP" . substr(time(), -7) . rand(10, 99);
         $payments[$oid] = [
             "user" => $uid, "amount" => $amount, "method" => $pm_name, "method_id" => $pmid,
             "screenshot" => $photo_id, "utr" => $utr, "status" => "pending",
@@ -690,11 +743,16 @@ function handleTextState($c, $mid, $uid, $text) {
         ];
         saveJson("payments", $payments); clearState($uid);
 
-        sendMsg($c, "✅ <b>PAYMENT SUBMITTED</b>\n━━━━━━━━━━━\n\n🎉 Your payment has been received successfully.\n\n💰 <b>Amount:</b> {$cur}{$amount}\n💳 <b>Method:</b> $pm_name\n🧾 <b>UTR:</b> <code>$utr</code>\n🆔 <b>Order ID:</b> <code>$oid</code>\n\n━━━━━━━━━━━\n⏳ <i>Verification in progress...</i>\n🙏 Please wait for admin approval.", btn([[["⬅️ Menu", "back", "danger"]]]));
+        sendMsg($c, "✅ <b>DEPOSIT SUBMITTED</b>\n━━━━━━━━━━━\n\n🎉 Your deposit proof has been submitted for verification.\n\n💰 <b>Amount:</b> {$cur}{$amount} USD\n💳 <b>Method:</b> $pm_name\n🧾 <b>TxID / Ref:</b> <code>$utr</code>\n🆔 <b>Order ID:</b> <code>$oid</code>\n\n━━━━━━━━━━━\n⏳ <i>Our admin will review and credit your USD balance shortly!</i>", btn([[["⬅️ Main Menu", "back", "danger"]]]));
 
         $uname = $users[$uid]['name'] ?? 'User';
-        $adminMsg = "🔔 <b>NEW MANUAL PAYMENT</b>\n━━━━━━━━━━━\n\n👤 $uname\n🆔 <code>$uid</code>\n💰 {$cur}{$amount}\n💳 $pm_name\n🧾 UTR: <code>$utr</code>\n🆔 <code>$oid</code>\n📅 " . date("d M Y H:i") . " IST";
-        sendPhoto($adminID, $photo_id, $adminMsg, btn([[["✅ Approve", "approve_$oid", "success"], ["❌ Reject", "reject_$oid", "danger"]]]));
+        $uname_handle = !empty($users[$uid]['username']) ? "@" . $users[$uid]['username'] : "No Username";
+        $adminMsg = "🔔 <b>NEW DEPOSIT PENDING REVIEW</b>\n━━━━━━━━━━━\n\n👤 <b>User:</b> $uname ($uname_handle)\n🆔 <code>$uid</code>\n💰 <b>Amount:</b> {$cur}{$amount} USD\n💳 <b>Method:</b> $pm_name\n🧾 <b>TxID / Ref:</b> <code>$utr</code>\n🆔 <code>$oid</code>\n📅 " . date("d M Y H:i") . " UTC";
+        
+        $adminsToNotify = array_unique(array_merge([$adminID], $settings['admins'] ?? []));
+        foreach ($adminsToNotify as $aid) {
+            sendPhoto($aid, $photo_id, $adminMsg, btn([[["✅ Approve", "approve_$oid", "success"], ["❌ Reject", "reject_$oid", "danger"]]]));
+        }
         return;
     }
 }
@@ -722,8 +780,8 @@ function handleMediaState($c, $mid, $uid, $msg) {
         if ($state == "addpm_qr" && isset($msg['photo'])) {
             $pmid = getExtra($uid, 'pm_id');
             $settings['payment_methods'][$pmid]['qr_url'] = $msg['photo'][count($msg['photo']) - 1]['file_id']; saveJson("settings", $settings);
-            setState($uid, "addpm_upi", ["pm_id" => $pmid]);
-            sendMsg($c, "✅ <b>QR saved</b>\n\n💳 Send UPI ID", btn([[["❌ Cancel", "backadmin", "danger"]]]));
+            setState($uid, "addpm_address", ["pm_id" => $pmid]);
+            sendMsg($c, "✅ <b>QR Photo Saved!</b>\n\n💳 <b>Now send Account Details / Wallet Address / Pay ID:</b>\n\n(e.g. Binance Pay ID, Easypaisa Phone & Title, USDT Address)", btn([[["❌ Cancel", "backadmin", "danger"]]]));
             return;
         }
         if ($state == "pm_message") {
@@ -884,22 +942,34 @@ function showSupport($c, $mid) { global $settings; $u = $settings['support_user'
 // ============================================================
 function showAddFund($c, $mid, $uid) {
     global $settings;
-    $methods = $settings['payment_methods'];
-    $msg = "💰 <b>Add Fund</b>\n━━━━━━━━━━━\n\nChoose payment method:";
+    $methods = $settings['payment_methods'] ?? [];
+    $cur = $settings['currency'];
+    $msg = "💰 <b>Add Balance (Deposit in {$cur})</b>\n━━━━━━━━━━━\n\nChoose your payment method below:";
     $kb = [];
-    foreach ($methods as $id => $pm) $kb[] = [["💳 {$pm['name']}", "pm_$id", "primary"]];
-    if ($settings['use_auto']) $kb[] = [["⚡ Automatic UPI", "auto_pay", "success"]];
-    $kb[] = [["⬅️ Menu", "back", "danger"]];
-    if (count($methods) == 0 && !$settings['use_auto']) $msg = "💰 <b>Add Fund</b>\n━━━━━━━━━━━\n\n❌ No payment methods available.";
+    foreach ($methods as $id => $pm) {
+        $icon = "💳";
+        if (stripos($pm['name'], 'binance') !== false || stripos($pm['name'], 'usdt') !== false) $icon = "🟡";
+        elseif (stripos($pm['name'], 'easypaisa') !== false) $icon = "🟢";
+        elseif (stripos($pm['name'], 'crypto') !== false || stripos($pm['name'], 'btc') !== false) $icon = "🪙";
+        $kb[] = [["$icon {$pm['name']}", "pm_$id", "primary"]];
+    }
+    $kb[] = [["⬅️ Main Menu", "back", "danger"]];
+    if (count($methods) == 0) $msg = "💰 <b>Add Balance</b>\n━━━━━━━━━━━\n\n❌ No payment methods currently available. Please contact support.";
     smartReply($c, $mid, $msg, btn($kb));
 }
 function selectManualPM($c, $mid, $pmid) {
     global $settings;
     $methods = $settings['payment_methods'];
-    if (!isset($methods[$pmid])) { smartReply($c, $mid, "❌ Not found", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
+    if (!isset($methods[$pmid])) { smartReply($c, $mid, "❌ Payment method not found", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
     $pm = $methods[$pmid];
-    $msg = "💳 <b>{$pm['name']}</b>\n━━━━━━━━━━━\n\n" . ($pm['description'] ? "📝 {$pm['description']}\n\n" : "") . "💳 <b>UPI ID:</b>\n<code>{$pm['upi_id']}</code>";
-    $kb = btn([[["✅ Continue", "manual_amt_$pmid", "success"]], [["⬅️ Back", "addbal", "danger"]]]);
+    $cur = $settings['currency'];
+    $addr = !empty($pm['address']) ? $pm['address'] : (!empty($pm['upi_id']) ? $pm['upi_id'] : 'Contact Admin');
+    $msg = "💳 <b>{$pm['name']}</b>\n━━━━━━━━━━━\n\n";
+    if (!empty($pm['description'])) {
+        $msg .= "📝 <b>Instructions:</b>\n{$pm['description']}\n\n";
+    }
+    $msg .= "📍 <b>Payment Address / Account:</b>\n<code>{$addr}</code>\n\n<i>(Tap on address above to copy)</i>\n\n━━━━━━━━━━━\n💵 All balances are credited in <b>USD ({$cur})</b>.";
+    $kb = btn([[["✅ Continue to Deposit", "manual_amt_$pmid", "success"]], [["⬅️ Choose Another Method", "addbal", "danger"]]]);
     if (!empty($pm['qr_url'])) { @tg("deleteMessage", ['chat_id' => $c, 'message_id' => $mid]); $r = sendPhoto($c, $pm['qr_url'], $msg, $kb); if (!$r || stripos($r, '"ok":true') === false) sendMsg($c, $msg, $kb); }
     else smartReply($c, $mid, $msg, $kb);
 }
@@ -908,23 +978,25 @@ function startManualAmount($c, $mid, $uid, $pmid) {
     if (!isset($settings['payment_methods'][$pmid])) { smartReply($c, $mid, "❌ Not found", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
     setState($uid, "man_amount", ["pm_id" => $pmid]);
     $cur = $settings['currency'];
-    smartReply($c, $mid, "💰 <b>Enter Amount</b>\n━━━━━━━━━━━\n\nMin: {$cur}1 • Max: {$cur}100000", btn([[["⬅️ Cancel", "addbal", "danger"]]]));
+    smartReply($c, $mid, "💰 <b>Enter Deposit Amount in USD ({$cur})</b>\n━━━━━━━━━━━\n\n💵 Minimum: {$cur}0.5 • Maximum: {$cur}10,000\n\n<i>Reply with amount, e.g. <code>5</code>, <code>10</code>, <code>50</code></i>", btn([[["⬅️ Cancel", "addbal", "danger"]]]));
 }
 function processManualAmount($c, $uid, $pmid, $amount) {
     global $settings;
     $cur = $settings['currency'];
-    if ($amount < 1 || $amount > 100000) { sendMsg($c, "❌ Invalid amount ({$cur}1-{$cur}100000)", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
+    $amount = (float)$amount;
+    if ($amount < 0.1 || $amount > 100000) { sendMsg($c, "❌ Invalid amount (Min: {$cur}0.1 • Max: {$cur}100,000)", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
     $pm = $settings['payment_methods'][$pmid] ?? null;
     if (!$pm) { sendMsg($c, "❌ Method not found", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
+    $addr = !empty($pm['address']) ? $pm['address'] : (!empty($pm['upi_id']) ? $pm['upi_id'] : 'Contact Admin');
     setState($uid, "man_ss", ["pm_id" => $pmid, "amount" => $amount]);
-    sendMsg($c, "💰 <b>Amount: {$cur}{$amount}</b>\n━━━━━━━━━━━\n\n💳 Pay to:\n<code>{$pm['upi_id']}</code>\n\n📸 Upload payment screenshot.\n\n⚠️ Photo only. /cancel to abort.", btn([[["⬅️ Cancel", "addbal", "danger"]]]));
+    sendMsg($c, "💰 <b>Deposit Amount: {$cur}{$amount} USD</b>\n━━━━━━━━━━━\n\n💳 <b>Send Payment to:</b>\n<code>{$addr}</code>\n\n📸 <b>Next Step:</b>\nUpload your payment <b>Screenshot proof</b>.\n\n⚠️ Photo only. Send /cancel to abort.", btn([[["⬅️ Cancel", "addbal", "danger"]]]));
 }
 function submitManualPayment($c, $uid, $photo_id) {
     $pmid = getExtra($uid, 'pm_id');
     $amount = getExtra($uid, 'amount');
-    if (!$pmid || !$amount) { sendMsg($c, "❌ Session expired", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
+    if (!$pmid || !$amount) { sendMsg($c, "❌ Session expired. Please start again.", btn([[["⬅️ Back", "addbal", "danger"]]])); return; }
     setState($uid, "man_utr", ["pm_id" => $pmid, "amount" => $amount, "photo" => $photo_id]);
-    sendMsg($c, "✅ <b>Screenshot received!</b>\n━━━━━━━━━━━\n\n🔢 <b>Enter UTR / Transaction ID</b>\n\nExample: <code>1234567890123</code>", btn([[["❌ Cancel", "addbal", "danger"]]]));
+    sendMsg($c, "✅ <b>Screenshot Received!</b>\n━━━━━━━━━━━\n\n🔢 <b>Enter Transaction ID / TxID / TRX ID / Reference:</b>\n\n<i>Example: <code>TX1234567890</code> or Easypaisa TRX ID</i>", btn([[["❌ Cancel", "addbal", "danger"]]]));
 }
 
 // ============================================================
@@ -1104,11 +1176,22 @@ function showProductDeleteList($c, $mid) {
 
 function showPMManager($c, $mid) {
     global $settings;
-    $methods = $settings['payment_methods'];
-    $msg = "💳 <b>Payment Methods</b>\n━━━━━━━━━━━\n\n" . count($methods) . " configured";
-    $kb = []; foreach ($methods as $id => $pm) $kb[] = [["❌ {$pm['name']}", "delpm_$id", "danger"]];
-    $kb[] = [["➕ Add Payment Method", "addpm", "success"]];
-    $kb[] = [["⬅️ Back", "backadmin", "danger"]];
+    $methods = $settings['payment_methods'] ?? [];
+    $msg = "💳 <b>PAYMENT METHODS MANAGER</b>\n━━━━━━━━━━━\n\nConfigure Binance, Easypaisa, Crypto, etc.:\n\n";
+    $kb = [];
+    if (empty($methods)) {
+        $msg .= "❌ <i>No payment methods added yet.</i>\n";
+    } else {
+        $i = 1;
+        foreach ($methods as $id => $pm) {
+            $addr = $pm['address'] ?? $pm['upi_id'] ?? 'Not configured';
+            $msg .= "$i. <b>{$pm['name']}</b>\n   📍 <code>{$addr}</code>\n\n";
+            $kb[] = [["🗑 Delete {$pm['name']}", "delpm_$id", "danger"]];
+            $i++;
+        }
+    }
+    $kb[] = [["➕ Add New Payment Method", "addpm", "success"]];
+    $kb[] = [["⬅️ Admin Panel", "backadmin", "danger"]];
     smartReply($c, $mid, $msg, btn($kb));
 }
 
