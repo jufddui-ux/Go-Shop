@@ -15,7 +15,7 @@ set_time_limit(120); ob_start();
 // ============================================================
 // CONFIG
 // ============================================================
-$botToken = $_GET['token'] ?? "8787930939:AAFgEyV40a7ElwhRFg43J5Y_YUyCXbmWQFk";
+$botToken = "8787930939:AAFgEyV40a7ElwhRFg43J5Y_YUyCXbmWQFk";
 $website  = "https://api.telegram.org/bot" . $botToken;
 $adminID  = "8671458115"; // REAL OWNER
 
