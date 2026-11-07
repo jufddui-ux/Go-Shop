@@ -1,6 +1,6 @@
 FROM php:8.2-cli-alpine
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl ca-certificates
 
 WORKDIR /app
 
