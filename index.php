@@ -90,10 +90,55 @@ function httpPost($url, $data, $timeout = 20) {
             CURLOPT_HTTPHEADER => ['Content-Type: application/x-www-form-urlencoded']
         ]);
         $r = curl_exec($ch);
+        $err = curl_error($ch);
         curl_close($ch);
-        return $r;
+        if ($r !== false && strlen($r) > 0) return $r;
+        if (!empty($err)) {
+            @file_put_contents(__DIR__."/bot_error.log", date('Y-m-d H:i:s')." | CURL POST error: $err
+", FILE_APPEND);
+        }
     }
-    $ctx = stream_context_create(['http' => ['method' => 'POST','header' => 'Content-Type: application/x-www-form-urlencoded','content' => $post,'timeout' => $timeout,'ignore_errors' => true]]);
+    if (function_exists('shell_exec')) {
+        $cmd = "curl -k -s -X POST -d " . escapeshellarg($post) . " --max-time {$timeout} " . escapeshellarg($url);
+        $r = @shell_exec($cmd);
+        if (!empty($r)) return $r;
+    }
+    $ctx = stream_context_create([
+        'http' => ['method' => 'POST', 'header' => 'Content-Type: application/x-www-form-urlencoded', 'content' => $post, 'timeout' => $timeout, 'ignore_errors' => true],
+        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
+    ]);
+    return @file_get_contents($url, false, $ctx);
+}
+
+function httpGet($url, $timeout = 25) {
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_FOLLOWLOCATION => true
+        ]);
+        $r = curl_exec($ch);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($r !== false && strlen($r) > 0) return $r;
+        if (!empty($err)) {
+            @file_put_contents(__DIR__."/bot_error.log", date('Y-m-d H:i:s')." | CURL GET error: $err
+", FILE_APPEND);
+        }
+    }
+    if (function_exists('shell_exec')) {
+        $cmd = "curl -k -s -L --max-time {$timeout} " . escapeshellarg($url);
+        $r = @shell_exec($cmd);
+        if (!empty($r)) return $r;
+    }
+    $ctx = stream_context_create([
+        'http' => ['timeout' => $timeout, 'ignore_errors' => true],
+        'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
+    ]);
     return @file_get_contents($url, false, $ctx);
 }
 function httpGet($url, $timeout = 25) {
@@ -143,7 +188,10 @@ if (isset($_GET['setwebhook'])) {
     $tgApi = "https://api.telegram.org/bot{$botToken}/setWebhook?url=" . urlencode($targetUrl);
     $res = httpGet($tgApi);
     @file_put_contents($webhookMarker, date('Y-m-d H:i:s') . " | MANUAL | " . $targetUrl);
-    echo $res ?: json_encode(['ok' => false, 'description' => 'Failed to reach Telegram API via curl']);
+    if (empty($res)) {
+        $res = json_encode(['ok' => false, 'description' => 'Empty response from Telegram API', 'tried' => $tgApi]);
+    }
+    echo $res;
     exit;
 }
 
